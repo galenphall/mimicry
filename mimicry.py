@@ -45,7 +45,7 @@ import sys
 def update(
     s, d, r, v, num_venomous_prey, num_mimics, 
     rates={'s': 0.01, 'r': 0.01, 'v': 0.01, 'd': 0.01},
-    hardcode={'s': None, 'r': None, 'v': None, 'd': None}):
+    hardcode={}):
     """
     Update the populations of predators, venomous prey, and mimics.
     """
@@ -88,7 +88,7 @@ def update(
 
     # Create the next generation for venomous prey and mimics
     new_s_v = crossover_bitstring(s_v, prey_v)
-    new_s_v = mutate(new_s_v)
+    new_s_v = mutate01(new_s_v)
     
     # Combine the new signals back into one array
     if num_mimics > 0:
@@ -99,21 +99,20 @@ def update(
     # Create the next generation d, r, v values
     # Crossover and mutate the detection bit strings
     new_d = crossover_bitstring(d, predators)
-    new_d = mutate(new_d)
+    new_d = mutate01(new_d)
 
-    # Crossover and mutate the risk tolerance values
-    new_r = crossover_realvalued(r, predators)
-    new_r = mutate(new_r)
+    if 'v' in hardcode:
+        new_v = hardcode['v']
+    else:
+        new_v = crossover_realvalued(v, prey_v)
+        new_v = mutate01(new_v, 0.1)
 
-    # Crossover and mutate the venom levels
-    new_v = crossover_realvalued(v, prey_v)
-    new_v = mutate(new_v)
+    if 'r' in hardcode:
+        new_r = hardcode['r']
+    else:
+        new_r = crossover_realvalued(r, predators)
+        new_r = mutate0inf(new_r)
 
-    if hardcode['v']:
-        new_v = np.fill_like(new_v, hardcode['v'])
-
-    if hardcode['r']:
-        new_r = np.fill_like(new_r, hardcode['r'])
 
     return new_s, new_d, new_r, new_v
 
@@ -216,9 +215,9 @@ def crossover_realvalued(x, prey):
 
 
 
-def mutate(x, mutation_rate=0.01):
+def mutate01(x, mutation_rate=0.01):
     """
-    Apply random mutations to the bit strings or numerical values.
+    Apply random mutations to the bit strings or numerical values in the [0, 1] range.
     """
     if x.dtype == np.float64:
         # For numerical values, apply small random changes to the logit-transformed values
@@ -236,11 +235,32 @@ def mutate(x, mutation_rate=0.01):
         x = np.where(mutations, 1 - x, x)  # Flip bits
     return x
 
+def mutate0inf(x, mutation_rate=0.01):
+    """
+    Apply random mutations to the real-valued vectors in the [0, inf] range.
+    """
+    mutations = np.random.normal(0, mutation_rate, x.shape)
+    x += mutations
+    return x
+
 def save_data(data, path, **kwargs):
     """
     Todo: save data to some appropriate online store.
     """
     pass
+
+def detector_cross_entropy(d, s, r, v):
+    """
+    Calculate the cross entropy of the venomosity and signals, given the detection bit strings.
+    """
+    # First calculate M, the predator's estimated probability a given signal bit string is venomous
+    S = similarity(s, d)
+    P = np.exp(-S / r[:, None])
+    P /= np.sum(A, axis=1, keepdims=True)
+    M = 1 - P
+
+    # Now calculate the cross entropy with the probability 
+    return -np.sum(np.log(A) * v, axis=1)
 
 
 if __name__ == "__main__":
@@ -253,7 +273,6 @@ if __name__ == "__main__":
         num_mimics = int(args[2])
         bit_string_length = int(args[3])
         generations = int(args[4])
-        
 
     # Initialize the populations
 
@@ -264,8 +283,8 @@ if __name__ == "__main__":
     # identical d for all populations
     d = np.ones((num_predators, bit_string_length)).astype(np.int64)
 
-    r = np.ones(num_predators)
-    v = np.ones(num_venomous_prey) * 0.001
+    r = np.ones(num_predators) * 0.9
+    v = np.ones(num_venomous_prey) * 0.1
 
     # Keep track of transient data for analysis
     transient_data = {
