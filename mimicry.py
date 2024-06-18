@@ -40,6 +40,7 @@ import datetime
 import zarr
 import matplotlib.pyplot as plt
 from scipy.stats import pearsonr, spearmanr
+import sys
 
 def update(
     s, d, r, v, num_venomous_prey, num_mimics, 
@@ -153,8 +154,8 @@ def sample_predators(A, v):
     Sample the predator population based on the predation matrix and venom levels.
     """
     P = np.sum(A * v, axis=1) # Probability predator i dies.
-    P /= P.sum()  # Normalize the probabilities.
     P = 1 - P # Probability predator i survives.
+    P /= P.sum()  # Normalize the probabilities.
     return np.random.choice(len(P), size=len(P), p=P)
 
 def crossover_bitstring(s, prey):
@@ -222,7 +223,10 @@ def mutate(x, mutation_rate=0.01):
     if x.dtype == np.float64:
         # For numerical values, apply small random changes to the logit-transformed values
         # Then transform back to the original scale
-        logit_x = np.log(x / (1 - x))
+        
+        # if x is 0 or 1, the logit transform is undefined, so we add a small value to avoid this
+        x = np.clip(x, 1e-6, 1 - 1e-6)
+        logit_x = np.log(x / (1 - x)) 
         mutations = np.random.normal(0, mutation_rate, x.shape)
         logit_x += mutations
         x = 1 / (1 + np.exp(-logit_x))
@@ -238,48 +242,63 @@ def save_data(data, path, **kwargs):
     """
     pass
 
-# Initialize population parameters
-num_predators = 100
-num_venomous_prey = 100
-num_mimics = 0
-bit_string_length = 5
 
-# Randomly initialize the populations
-s = np.random.randint(2, size=(num_venomous_prey + num_mimics, bit_string_length))
-d = np.random.randint(2, size=(num_predators, bit_string_length))
-r = np.random.rand(num_predators) / 8
-v = np.random.rand(num_venomous_prey) / 4
+if __name__ == "__main__":
 
-# Run the algorithm for many generations
-num_generations = 10000
+    args = sys.argv[1:]
 
-# Keep track of transient data for analysis
-transient_data = {
-    's': [],
-    'd': [],
-    'r': [],
-    'v': [],
-}
+    if len(args) > 0:
+        num_predators = int(args[0])
+        num_venomous_prey = int(args[1])
+        num_mimics = int(args[2])
+        bit_string_length = int(args[3])
+        generations = int(args[4])
+        
 
-for generation in tqdm(range(num_generations)):
-    # Save transient data
-    transient_data['s'].append(s.copy())
-    transient_data['d'].append(d.copy())
-    transient_data['r'].append(r.copy())
-    transient_data['v'].append(v.copy())
+    # Initialize the populations
 
-    s, d, r, v = update(s, d, r, v, num_venomous_prey, num_mimics)
+    # identical s for all populations
+    s = np.ones((num_venomous_prey + num_mimics, bit_string_length)).astype(np.int64)
+    # s = np.random.randint(2, size=(num_venomous_prey + num_mimics, bit_string_length))
 
-# Final population values
-print("Final signals (s):", s)
-print("Final detections (d):", d)
-print("Final risk tolerances (r):", r)
-print("Final venom levels (v):", v)
+    # identical d for all populations
+    d = np.ones((num_predators, bit_string_length)).astype(np.int64)
 
-# Save the final populations to a zarr file
-date = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-filename = f"data/mimicry_{date}.zarr"
-zarr.save(filename, **transient_data)
+    r = np.ones(num_predators)
+    v = np.ones(num_venomous_prey) * 0.001
+
+    # Keep track of transient data for analysis
+    transient_data = {
+        's': [],
+        'd': [],
+        'r': [],
+        'v': [],
+    }
+
+    for generation in tqdm(range(generations)):
+        # Save transient data; convert to 16-bit integers to save space
+        s_copy = s.copy().astype(np.int16)
+        d_copy = d.copy().astype(np.int16)
+        r_copy = r.copy().astype(np.float16)
+        v_copy = v.copy().astype(np.float16)
+
+        transient_data['s'].append(s_copy)
+        transient_data['d'].append(d_copy)
+        transient_data['r'].append(r_copy)
+        transient_data['v'].append(v_copy)
+
+        s, d, r, v = update(s, d, r, v, num_venomous_prey, num_mimics)
+
+    # Final population values
+    print("Final signals (s):", s)
+    print("Final detections (d):", d)
+    print("Final risk tolerances (r):", r)
+    print("Final venom levels (v):", v)
+
+    # Save the final populations to a zarr file
+    date = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    filename = f"mimicry_{date}.zarr"
+    zarr.save(filename, **transient_data)
 
 
 
