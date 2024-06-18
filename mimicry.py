@@ -152,8 +152,9 @@ def sample_predators(A, v):
     """
     Sample the predator population based on the predation matrix and venom levels.
     """
-    P = np.sum(A * v, axis=1)
-    P /= P.sum()  # Normalize the probabilities
+    P = np.sum(A * v, axis=1) # Probability predator i dies.
+    P /= P.sum()  # Normalize the probabilities.
+    P = 1 - P # Probability predator i survives.
     return np.random.choice(len(P), size=len(P), p=P)
 
 def crossover_bitstring(s, prey):
@@ -230,6 +231,12 @@ def mutate(x, mutation_rate=0.01):
         mutations = np.random.rand(*x.shape) < mutation_rate
         x = np.where(mutations, 1 - x, x)  # Flip bits
     return x
+
+def save_data(data, path, **kwargs):
+    """
+    Todo: save data to some appropriate online store.
+    """
+    pass
 
 # Initialize population parameters
 num_predators = 100
