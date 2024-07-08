@@ -171,7 +171,7 @@ def calculate_predation_matrix(detectors, signals, risk_tols, handling_times, at
     intake_rates = attack_freqs / (1 + attack_freqs * handling_times * n_effective_prey)
     return intake_rates[:, None] * preference_matrix
 
-def sample_predators(predation_matrix, venom_levels, pred_conversion_ratios, species_indices):
+def sample_predators(predation_matrix, venom_levels, pred_conversion_ratios, death_rates, species_indices):
     """
     Sample predators based on predation success and venom effects for multiple species.
 
@@ -185,6 +185,7 @@ def sample_predators(predation_matrix, venom_levels, pred_conversion_ratios, spe
     ndarray: Indices of sampled predators
     """
     fitnesses = (predation_matrix * (1 - venom_levels) * pred_conversion_ratios[:, None] - predation_matrix * venom_levels).sum(1)
+    fitnesses += 1 - death_rates[:, None]
     means = np.maximum(fitnesses, 0)
     counts = np.random.poisson(means)
     return np.repeat(np.arange(len(counts)), counts)
@@ -212,7 +213,7 @@ def sample_prey(predation_matrix, popcaps, venom_levels, species_indices):
     return np.repeat(np.arange(len(counts)), counts)
 
 def update(detectors, signals, risk_tols, venom_levels, species_indices,
-           handling_times, attack_freqs, predator_conversion_ratios, prey_popcaps,
+           handling_times, attack_freqs, predator_conversion_ratios, predator_death_rates, prey_popcaps,
            mutation_rates, phenotype_type='vector', periodic_boundary=None):
     """
     Update the population of predators and prey for one generation with multiple species.
@@ -226,6 +227,7 @@ def update(detectors, signals, risk_tols, venom_levels, species_indices,
     handling_times (ndarray): Array of handling times for each predator species
     attack_freqs (ndarray): Array of attack frequencies for each predator species
     predator_conversion_ratios (ndarray): Array of conversion ratios for each predator species
+    predator_death_rates (ndarray): Array of death rates for each predator species
     prey_popcaps (ndarray): Array of population caps for each prey species
     mutation_rates (dict): Dictionary of mutation rates for each species type ('predators' and 'prey')
     phenotype_type (str): Type of phenotype representation ('vector' or 'bitstring')
@@ -244,7 +246,7 @@ def update(detectors, signals, risk_tols, venom_levels, species_indices,
                                                   phenotype_type=phenotype_type, 
                                                   periodic_boundary=periodic_boundary)
 
-    predator_children = sample_predators(predation_matrix, venom_levels, predator_conversion_ratios, species_indices)
+    predator_children = sample_predators(predation_matrix, venom_levels, predator_conversion_ratios, predator_death_rates, species_indices)
     prey_children = sample_prey(predation_matrix, prey_popcaps, venom_levels, species_indices)
     
     predator_children_detectors = detectors[predator_children]
