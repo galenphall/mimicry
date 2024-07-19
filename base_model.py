@@ -121,8 +121,9 @@ def calculate_predation_matrix(detectors, signals, risk_tols, handling_time,
     preference_matrix = calculate_preference_matrix(detectors, signals, risk_tols, phenotype_type, periodic_boundary)
     n_predators, n_prey = preference_matrix.shape
     n_effective_prey = preference_matrix.sum(1) + R
-    intake_rates = attack_freq / (1 + n_predators + attack_freq * handling_time * n_effective_prey)
-    return intake_rates[:, None] * preference_matrix, n_effective_prey
+    n_effective_predators = preference_matrix.sum(0)
+    intake_rates = attack_freq / (1 + n_effective_predators[:, None] + attack_freq * handling_time * n_effective_prey)
+    return intake_rates.T * preference_matrix, n_effective_prey
 
 def sample_predators(predation_matrix, venom_levels, pred_conversion_ratio, attack_rate, handling_time, R, n_effective_prey, death_rate=0.5):
     """
